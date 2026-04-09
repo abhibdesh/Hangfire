@@ -1,29 +1,18 @@
-# High-Concurrency Batch Processing System (Hangfire + .NET + Oracle)
+# High-Concurrency Batch Processing System
 
-A production-grade backend system designed to process large Excel uploads at scale using **asynchronous job queues, parallel execution, and controlled concurrency**.
+Hangfire + ASP.NET Core + Oracle
 
-This system eliminates sequential bottlenecks and enables **high-throughput, fault-tolerant batch processing** for data-intensive workflows such as AML verification.
-
----
-
-## Problem
-
-Traditional Excel upload systems fail at scale due to:
-
-* Sequential processing → extremely slow execution
-* Blocking HTTP requests → poor user experience
-* No retry mechanism → data loss on failure
-* Lack of concurrency → underutilized resources
+A backend system designed to process large Excel uploads using asynchronous job queues, controlled concurrency, and parallel execution. The system replaces sequential processing with a scalable architecture capable of handling high-volume data workloads reliably.
 
 ---
 
-## Solution
+## Overview
 
-This system introduces a **queue-driven, parallel processing architecture** using Hangfire:
+This system processes uploaded files in a non-blocking manner by delegating heavy workloads to background jobs. It ensures efficient handling of large datasets while maintaining system stability under concurrent load.
 
-```
-User Upload → API → Queue (Hangfire) → Worker Pool → Parallel Processing → Results Export
-```
+Flow:
+
+Client → API → Hangfire Queue → Worker Pool → Parallel Processing → Database → Report Generation
 
 ---
 
@@ -31,180 +20,209 @@ User Upload → API → Queue (Hangfire) → Worker Pool → Parallel Processing
 
 ### Asynchronous Job Processing
 
-* File uploads are **queued using Hangfire**
-* Non-blocking architecture ensures fast API response
-* Background workers handle heavy processing
+* Upload requests are enqueued using Hangfire
+* API remains non-blocking and responsive
+* Background workers handle execution
 
----
-
-### Parallel Execution Engine
+### Parallel Processing
 
 * Uses `Parallel.ForEach` with controlled concurrency
-* Configured with `MaxDegreeOfParallelism = 4` 
-* Enables simultaneous processing of multiple records
+* Configured `MaxDegreeOfParallelism = 4`
+* Enables concurrent processing of records within a batch
 
----
+### Controlled Worker Concurrency
 
-### High-Performance Data Processing
-
-* Processes large datasets from staging tables efficiently
-* Batch execution reduces latency significantly
-* Designed for **high-throughput AML search workflows**
-
----
-
-### Fault Tolerance & Retries
-
-* Automatic retries with Hangfire
-* `[AutomaticRetry(Attempts = 3)]` ensures resilience 
-* Failures are logged and retried safely
-
----
-
-### Rate Limiting (System Protection)
-
-* Prevents system overload during uploads
-* Fixed window limiter:
-
-  * 10 uploads per 60 seconds
-* Ensures **controlled ingestion under load**
-
----
-
-### Structured Logging
-
-* Integrated with `log4net`
-* Logs:
-
-  * Job lifecycle
-  * Parallel execution progress
-  * Stored procedure calls
-  * Failures and retries
-
----
+* Hangfire worker count configured to 4
+* Multiple jobs processed in parallel
+* Prevents uncontrolled thread explosion
 
 ### Bulk Data Ingestion
 
-* Uses `OracleBulkCopy` for high-speed inserts 
-* Efficient staging of uploaded data before processing
+* Uses `OracleBulkCopy` for high-speed inserts
+* Efficient staging of large datasets
+
+### Retry Mechanism
+
+* Automatic retries configured using Hangfire
+* Failed jobs retried up to 3 times
+* Improves resilience against transient failures
+
+### Rate Limiting
+
+* Fixed window limiter applied at API level
+* Restricts uploads to prevent system overload
+* Ensures stable ingestion under high traffic
+
+### Logging and Observability
+
+* Integrated with log4net
+* Logs job lifecycle, execution steps, and failures
+* Enables traceability and debugging
+
+### Report Generation
+
+* Generates Excel reports using ClosedXML
+* Stores results and updates processing status
 
 ---
 
-### Excel Report Generation
+## Architecture
 
-* Generates result reports using `ClosedXML`
-* Automatically stores and updates processed file metadata
-
----
-
-## Architecture Overview
-
-```
 [Client]
-   ↓
-[ASP.NET API]
-   ↓
+↓
+[ASP.NET Core API]
+↓
 [Hangfire Queue]
-   ↓
+↓
 [Worker Pool (4 Workers)]
-   ↓
+↓
 [Parallel Processing Engine]
-   ↓
-[Oracle DB (Stored Procedures)]
-   ↓
+↓
+[Oracle Database (Stored Procedures)]
+↓
 [Excel Report Generation]
-```
 
 ---
 
 ## Tech Stack
 
-* **Backend:** ASP.NET Core
-* **Queue:** Hangfire (LiteDB storage)
-* **Database:** Oracle
-* **Concurrency:** Parallel.ForEach
-* **Logging:** log4net
-* **Excel Processing:** ClosedXML
-* **Rate Limiting:** ASP.NET RateLimiter
+Backend: ASP.NET Core
+Queue: Hangfire
+Storage (Demo): LiteDB
+Database: Oracle
+Concurrency: Parallel.ForEach
+Logging: log4net
+Excel Processing: ClosedXML
+Rate Limiting: ASP.NET RateLimiter
 
 ---
 
 ## Performance Impact
 
-* Converted **sequential processing → parallel execution**
-* Reduced processing time by **80–90%**
-* Saved **400–500 operational hours annually**
+* Converted sequential workflow to concurrent processing
+* Reduced processing time by 80–90%
+* Saved approximately 400–500 operational hours annually
 * Enabled scalable handling of large batch uploads
-
----
-
-## Reliability & Safety
-
-* Retry mechanism for failed jobs
-* Controlled concurrency to prevent resource exhaustion
-* Rate limiting to protect system under load
-* Structured logging for traceability
-
----
-
-## Core Workflow
-
-### 1. Upload
-
-* User uploads Excel file
-* File is saved and parsed into a DataTable
-
-### 2. Staging
-
-* Data is bulk inserted into Oracle staging tables
-
-### 3. Queueing
-
-* Job is enqueued using Hangfire
-
-### 4. Processing
-
-* Worker picks job
-* Executes parallel search across records
-* Merges results safely (thread-safe operations)
-
-### 5. Output
-
-* Generates Excel report
-* Updates database with processing status
 
 ---
 
 ## Concurrency Design
 
-* Controlled worker count (`WorkerCount = 4`)
-* Parallel execution with bounded threads
-* Thread-safe result aggregation using locks
+* Worker-level concurrency via Hangfire (WorkerCount = 4)
+* Record-level concurrency using Parallel.ForEach
+* Thread-safe aggregation using locks
 * Atomic counters for tracking progress
 
 ---
 
-## Future Improvements
+## Failure Handling Behavior
 
-* Distributed queue (Redis / SQL Server)
-* Dynamic worker scaling
-* Circuit breaker for DB calls
-* Metrics integration (Prometheus + Grafana)
+### Scenario: Job Queued
+
+* Jobs are persisted in storage
+* If application restarts, jobs remain intact
+* Workers resume processing after restart
+
+### Scenario: Job In Progress During Crash (IIS Reset / App Pool Recycle)
+
+* Running job is interrupted
+* Hangfire marks job as failed or incomplete
+* Job is retried based on retry policy
 
 ---
+
+## Limitations
+
+### 1. Non-Idempotent Processing Risk
+
+If a job fails mid-execution and retries:
+
+* Records may be reprocessed
+* Duplicate writes or inconsistent state may occur
+
+### 2. Partial Processing
+
+* Job may complete partially before failure
+* No built-in checkpointing for progress recovery
+
+### 3. Application Lifecycle Dependency
+
+* If hosted within IIS, app pool recycle stops workers
+* Background processing depends on application uptime
+
+### 4. Single-Instance Storage (Demo Setup)
+
+* LiteDB is not suitable for distributed or scaled environments
+* Limits horizontal scalability
+
+### 5. Fixed Concurrency
+
+* Worker count and parallelism are statically configured
+* No dynamic scaling based on system load
+
+---
+
+## Solutions and Improvements
+
+### Idempotency Enforcement
+
+* Use file-level or record-level identifiers
+* Skip already processed records
+* Ensure safe re-execution of jobs
+
+### Checkpointing
+
+* Process data in smaller chunks
+* Persist progress in database
+* Resume from last successful checkpoint
+
+### Job State Tracking
+
+* Maintain job status (STARTED / PROCESSING / COMPLETED)
+* Prevent duplicate execution of completed jobs
+
+### External Worker Service
+
+* Move Hangfire server to a dedicated worker service
+* Avoid dependency on IIS lifecycle
+
+### Production Storage Upgrade
+
+* Replace LiteDB with SQL Server or Redis
+* Enable distributed job processing
+
+### Dynamic Scaling
+
+* Adjust worker count based on load
+* Introduce queue prioritization if needed
+
+### Timeout and Circuit Handling
+
+* Add timeouts for database calls
+* Implement retry with backoff strategies
+
+---
+
+## Note
+
+This repository is a simplified and self-contained representation of a production system built to handle large-scale batch processing and concurrency challenges.
+
+The core design, concurrency model, and failure-handling strategies reflect real-world implementation, while infrastructure dependencies have been minimized for clarity and demonstration purposes.
 
 ## Summary
 
 This system demonstrates:
 
-* Real-world **concurrency handling**
-* Production-grade **queue-based architecture**
-* High-performance **data processing at scale**
-* Strong focus on **reliability and fault tolerance**
+* Practical concurrency handling in real-world scenarios
+* Queue-based asynchronous processing
+* Parallel execution for high-performance workloads
+* Awareness of failure modes and recovery strategies
+
+It is designed not just to process data, but to do so reliably under load and failure conditions.
 
 ---
 
 ## Author
 
-**Abhilasha Deshmukh**
-Backend Engineer 
+Abhilasha Deshmukh
+Backend Engineer — Distributed Systems and Concurrency
